@@ -1,0 +1,25 @@
+[package]
+name = "network_monitor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.9"
+tokio = { version = "1.53.1", features = ["full"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+chrono = { version = "0.4.45", features = ["serde"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+thiserror = "2.0.20"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }
+
+# Build-time only: validates db/schema.sql + db/queries/*.sql against an
+# in-memory database (see build.rs). Same crate+version as the runtime dep,
+# so cargo shares the compiled artifact — near-zero extra build cost.
+[build-dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled"] }

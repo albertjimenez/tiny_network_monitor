@@ -1,0 +1,16 @@
+{
+  "port": 3000,
+  "db_path": "netmon.db",
+  "check_interval_secs": 10,
+  "check_timeout_secs": 5,
+  "targets": [
+    { "name": "Google DNS", "host": "8.8.8.8", "port": 53 },
+    { "name": "Google DNS 2", "host": "8.8.4.4", "port": 53 },
+    { "name": "Cloudflare DNS", "host": "1.1.1.1", "port": 53 },
+    { "name": "Cloudflare DNS 2", "host": "1.0.0.1", "port": 53 },
+    { "name": "Quad9 DNS", "host": "9.9.9.9", "port": 53 },
+    { "name": "OpenDNS", "host": "208.67.222.222", "port": 53 },
+    { "name": "Google HTTPS", "host": "google.com", "port": 443 },
+    { "name": "Cloudflare HTTPS", "host": "cloudflare.com", "port": 443 }
+  ]
+}

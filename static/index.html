@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NetMon — Packet Loss & Connectivity Dashboard</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #131d33; --panel2: #0f1830; --border: #243354;
+    --text: #e8eefc; --muted: #93a3c4; --green: #22c55e; --red: #ef4444;
+    --amber: #f59e0b; --blue: #38bdf8; --violet: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; gap: 16px; align-items: center; padding: 16px 22px;
+    border-bottom: 1px solid var(--border); background: rgba(19,29,51,.8);
+    position: sticky; top: 0; z-index: 5; backdrop-filter: blur(6px); flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  h1 small { color: var(--muted); font-weight: 400; }
+  .badge { font-weight: 800; letter-spacing: .06em; padding: 8px 14px; border-radius: 999px;
+    font-size: 13px; border: 1px solid; }
+  .online { color: #052e16; background: var(--green); border-color: var(--green); }
+  .offline { color: #fff; background: var(--red); border-color: var(--red);
+    animation: blink 1.2s infinite; }
+  .degraded { color: #451a03; background: var(--amber); border-color: var(--amber); }
+  @keyframes blink { 50% { opacity: .55; } }
+  .meta { color: var(--muted); font-size: 13px; }
+  main { padding: 18px 22px 40px; max-width: 1200px; margin: 0 auto; }
+  .controls { display: flex; gap: 10px; align-items: center; margin: 14px 0; flex-wrap: wrap; }
+  select, button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  button { cursor: pointer; } button:hover { border-color: var(--blue); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 14px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .up { background: var(--green); } .down { background: var(--red); }
+  .big { font-size: 26px; font-weight: 800; }
+  .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .row b { color: var(--text); }
+  section.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin-top: 14px; }
+  section.panel h2 { margin: 0 0 10px; font-size: 14px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .08em; }
+  canvas { width: 100%; height: 260px; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; display: block; cursor: crosshair; }
+  .chart-wrap { position: relative; }
+  #tooltip { position: absolute; display: none; pointer-events: none; z-index: 10;
+    background: #0a0f1f; border: 1px solid var(--blue); border-radius: 8px;
+    padding: 8px 10px; font-size: 12px; line-height: 1.5; max-width: 240px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.5); white-space: nowrap; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill.ok { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid var(--green); }
+  .pill.bad { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid var(--red); }
+  .pill.warn { background: rgba(245,158,11,.15); color: var(--amber); border: 1px solid var(--amber); }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 18px; }
+  code { background: #0a0f1f; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📡 NetMon <small>packet loss & connectivity</small></h1>
+  <span id="badge" class="badge degraded">LOADING…</span>
+  <span class="meta" id="meta">connecting…</span>
+</header>
+
+<main>
+  <div class="controls">
+    <label class="meta">Range:
+      <select id="hours">
+        <option value="1">last 1h</option>
+        <option value="6">last 6h</option>
+        <option value="24" selected>last 24h</option>
+        <option value="72">last 3 days</option>
+        <option value="168">last 7 days</option>
+      </select>
+    </label>
+    <label class="meta">Target:
+      <select id="targetFilter"><option value="">all targets</option></select>
+    </label>
+    <button id="refresh">↻ Refresh now</button>
+    <span class="meta" id="countdown"></span>
+  </div>
+
+  <div class="grid" id="cards"></div>
+
+  <section class="panel">
+    <h2>Latency (ms) — dots at top = failed check / packet loss · hover a line for host details</h2>
+    <div class="chart-wrap">
+      <canvas id="chart" width="1000" height="260"></canvas>
+      <div id="tooltip"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Outages (consecutive failures grouped)</h2>
+    <table><thead><tr><th>Target</th><th>Start</th><th>End</th><th>Duration</th><th>Failed checks</th><th>State</th></tr></thead>
+    <tbody id="outages"><tr><td colspan="6">loading…</td></tr></tbody></table>
+  </section>
+
+  <section class="panel">
+    <h2>Recent failures</h2>
+    <table><thead><tr><th>Time</th><th>Target</th><th>Error</th></tr></thead>
+    <tbody id="failures"><tr><td colspan="3">loading…</td></tr></tbody></table>
+  </section>
+</main>
+
+<footer>
+  Checks run every <code id="interval">10</code>s (TCP connect + DNS resolve, persisted to SQLite).
+  No CDN — this page works even while the internet is down.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const COLORS = ["#38bdf8", "#a78bfa", "#22c55e", "#f59e0b", "#f472b6", "#fb7185"];
+let CFG = { check_interval_secs: 10, targets: [] };
+let nextRefreshIn = 10;
+
+function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
+function fmtDur(s) {
+  if (s == null) return "—";
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m " + (s%60) + "s";
+  return Math.floor(s/3600) + "h " + Math.floor((s%3600)/60) + "m";
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+async function jget(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(url + " -> " + r.status);
+  return r.json();
+}
+
+async function loadConfig() {
+  try { CFG = await jget("/api/config"); } catch (e) { console.warn(e); }
+  $("interval").textContent = CFG.check_interval_secs;
+  nextRefreshIn = CFG.check_interval_secs;
+  const sel = $("targetFilter");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">all targets</option>' +
+    CFG.targets.map(t => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join("");
+  if (cur) sel.value = cur;
+  $("legend").innerHTML = CFG.targets.map((t, i) =>
+    `<span><span class="sw" style="background:${COLORS[i % COLORS.length]}"></span>${esc(t.name)}</span>`).join("") +
+    `<span><span style="color:#ef4444">●</span> packet loss / failed check</span>`;
+}
+
+async function loadAll() {
+  const hours = parseFloat($("hours").value);
+  const filter = $("targetFilter").value;
+  try {
+    const [status, stats24, statsSel, outages, history] = await Promise.all([
+      jget("/api/status"),
+      jget("/api/stats?hours=24"),
+      jget("/api/stats?hours=" + hours),
+      jget("/api/outages?hours=" + hours),
+      jget("/api/history?hours=" + hours + "&limit=2000" + (filter ? "&target=" + encodeURIComponent(filter) : "")),
+    ]);
+    renderStatus(status);
+    renderCards(statsSel, stats24, status);
+    renderOutages(outages);
+    renderHistory(history, filter);
+  } catch (e) {
+    $("meta").textContent = "backend unreachable: " + e.message;
+    const b = $("badge"); b.textContent = "BACKEND DOWN"; b.className = "badge offline";
+  }
+}
+
+function renderStatus(s) {
+  const b = $("badge");
+  const upCount = s.targets.filter(t => t.success).length;
+  if (s.targets.length === 0) { b.textContent = "NO DATA YET"; b.className = "badge degraded"; }
+  else if (!s.online) { b.textContent = "✖ OFFLINE — PACKET LOSS"; b.className = "badge offline"; }
+  else if (upCount < s.targets.length) { b.textContent = "⚠ DEGRADED"; b.className = "badge degraded"; }
+  else { b.textContent = "● ONLINE"; b.className = "badge online"; }
+  const last = s.targets.length ? Math.max(...s.targets.map(t => t.ts)) : 0;
+  $("meta").textContent = `${s.total_checks} checks stored · last round ${last ? fmtTime(last) : "—"} · ${s.targets.length} target(s)`;
+}
+
+function renderCards(sel, s24, status) {
+  const byName24 = Object.fromEntries(s24.map(s => [s.target, s]));
+  const latestBy = Object.fromEntries(status.targets.map(c => [c.target, c]));
+  const el = $("cards");
+  if (!sel.length) { el.innerHTML = '<div class="card">No data in range yet — checks run every few seconds.</div>'; return; }
+  el.innerHTML = sel.map(s => {
+    const l = latestBy[s.target];
+    const up = l ? l.success : s.currently_up;
+    const cls = up == null ? "warn" : (up ? "ok" : "bad");
+    const txt = up == null ? "unknown" : (up ? "UP" : "DOWN — LOSING PACKETS");
+    const s24row = byName24[s.target];
+    return `<div class="card">
+      <h3><span class="dot ${up ? "up" : "down"}"></span>${esc(s.target)} <span class="pill ${cls}">${txt}</span></h3>
+      <div class="big">${s.loss_pct.toFixed(2)}% <span style="font-size:12px;color:var(--muted)">loss (${fmtRange()})</span></div>
+      <div class="row"><span>Checks</span><b>${s.total} (${s.failed} failed)</b></div>
+      <div class="row"><span>Avg latency</span><b>${s.avg_latency_ms != null ? s.avg_latency_ms.toFixed(0) + " ms" : "—"}</b></div>
+      <div class="row"><span>24h loss</span><b>${s24row ? s24row.loss_pct.toFixed(2) + "%" : "—"}</b></div>
+      <div class="row"><span>Last failure</span><b>${s.last_failure ? fmtTime(Date.parse(s.last_failure)/1000) : "none 🎉"}</b></div>
+    </div>`;
+  }).join("");
+}
+function fmtRange() { const h = $("hours").value; return h === "1" ? "1h" : h === "24" ? "24h" : h + "h"; }
+
+function renderOutages(list) {
+  const el = $("outages");
+  if (!list.length) { el.innerHTML = '<tr><td colspan="6">No outages in range 🎉 — no packet loss detected.</td></tr>'; return; }
+  el.innerHTML = list.slice(0, 50).map(o => `<tr>
+    <td>${esc(o.target)}</td><td>${fmtTime(o.start_ts)}</td>
+    <td>${o.end_ts ? fmtTime(o.end_ts) : "<b>ongoing</b>"}</td>
+    <td>${o.duration_secs != null ? fmtDur(o.duration_secs) : "ongoing"}</td>
+    <td>${o.failed_checks}</td>
+    <td>${o.ongoing ? '<span class="pill bad">ONGOING</span>' : '<span class="pill ok">recovered</span>'}</td>
+  </tr>`).join("");
+}
+
+function renderHistory(rows, filter) {
+  const fails = rows.filter(r => !r.success).slice(0, 30);
+  $("failures").innerHTML = fails.length ? fails.map(r =>
+    `<tr><td>${fmtTime(r.ts)}</td><td>${esc(r.target)}</td><td>${esc(r.error || "failed")}</td></tr>`).join("")
+    : '<tr><td colspan="3">No failures in range 🎉</td></tr>';
+  drawChart(rows);
+}
+
+function drawChart(rows, hoverIdx = -1) {
+  const cv = $("chart"), ctx = cv.getContext("2d");
+  // HiDPI
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 1000, H = 260;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const data = rows.slice().reverse();
+  lastChartRows = rows;
+  chartModel = { W, H, pts: [] };
+  hideTooltip();
+  if (!data.length) {
+    ctx.fillStyle = "#93a3c4"; ctx.font = "14px sans-serif";
+    ctx.fillText("No data in range yet…", 20, 40); return;
+  }
+  const t0 = Math.min(...data.map(r => r.ts)), t1 = Math.max(...data.map(r => r.ts));
+  const lats = data.map(r => r.latency_ms).filter(v => v != null);
+  let maxLat = Math.max(100, ...lats);
+  const padL = 46, padR = 10, padT = 14, padB = 22;
+  const X = ts => padL + (t1 === t0 ? (W - padL - padR) / 2 : (ts - t0) / (t1 - t0) * (W - padL - padR));
+  const Y = ms => padT + (1 - Math.min(ms, maxLat) / maxLat) * (H - padT - padB);
+  // grid
+  ctx.strokeStyle = "#243354"; ctx.fillStyle = "#93a3c4"; ctx.font = "11px sans-serif"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const v = maxLat * i / 4, y = Y(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+    ctx.fillText(Math.round(v) + "ms", 6, y + 4);
+  }
+  const tStart = new Date(t0 * 1000).toLocaleTimeString(), tEnd = new Date(t1 * 1000).toLocaleTimeString();
+  ctx.fillText(tStart, padL, H - 6); ctx.fillText(tEnd, W - padR - 70, H - 6);
+  // group by target
+  const byT = {};
+  data.forEach(r => { (byT[r.target] = byT[r.target] || []).push(r); });
+  Object.keys(byT).forEach((t, i) => {
+    const color = COLORS[i % COLORS.length];
+    const pts = byT[t].filter(r => r.success && r.latency_ms != null);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    pts.forEach((r, k) => { const x = X(r.ts), y = Y(r.latency_ms); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    // register latency points for hover hit-testing
+    pts.forEach(r => chartModel.pts.push({ x: X(r.ts), y: Y(r.latency_ms), row: r, color }));
+    // failures as red dots at top
+    ctx.fillStyle = "#ef4444";
+    byT[t].filter(r => !r.success).forEach(r => {
+      const x = X(r.ts), y = padT + 4;
+      ctx.beginPath(); ctx.arc(x, y, 3.4, 0, 7); ctx.fill();
+      chartModel.pts.push({ x, y, row: r, color: "#ef4444" });
+    });
+  });
+  // highlight hovered point
+  if (hoverIdx >= 0 && chartModel.pts[hoverIdx]) {
+    const p = chartModel.pts[hoverIdx];
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.stroke();
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 7); ctx.fill();
+  }
+}
+
+// --- chart hover tooltip: nearest-point hit test, shows hostname ---------
+let lastChartRows = [];
+let chartModel = { W: 0, H: 0, pts: [] };
+let hoverIdx = -1;
+const HOVER_PX = 16;
+
+function hostPortFor(name) {
+  const t = (CFG.targets || []).find(t => t.name === name);
+  return t ? `${t.host}:${t.port}` : "";
+}
+
+function hideTooltip() { $("tooltip").style.display = "none"; }
+
+function showTooltip(p, mx) {
+  const tip = $("tooltip");
+  const hp = hostPortFor(p.row.target);
+  const when = new Date(p.row.ts * 1000).toLocaleString();
+  const detail = p.row.success
+    ? `${esc(p.row.latency_ms)} ms`
+    : `<span style="color:#ef4444">packet loss — ${esc(p.row.error || "failed")}</span>`;
+  tip.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color};margin-right:6px"></span>` +
+    `<b>${esc(p.row.target)}</b><br>` +
+    `<span style="color:var(--muted)">${esc(hp)}</span><br>${when}<br>${detail}`;
+  tip.style.display = "block";
+  // keep inside the chart: flip to the left when near the right edge
+  const W = chartModel.W || 300;
+  tip.style.left = ((mx + 16 + 250 > W) ? Math.max(0, mx - 250) : mx + 16) + "px";
+  tip.style.top = "8px";
+}
+
+function onChartPointer(ev) {
+  if (!chartModel.pts.length) return;
+  const cv = $("chart");
+  const rect = cv.getBoundingClientRect();
+  const mx = (ev.clientX - rect.left), my = (ev.clientY - rect.top);
+  let best = -1, bestD = HOVER_PX * HOVER_PX;
+  chartModel.pts.forEach((p, i) => {
+    const d = (p.x - mx) * (p.x - mx) + (p.y - my) * (p.y - my);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  if (best !== hoverIdx) {
+    hoverIdx = best;
+    drawChart(lastChartRows, hoverIdx);
+    if (hoverIdx < 0) hideTooltip();
+  }
+  if (hoverIdx >= 0) showTooltip(chartModel.pts[hoverIdx], mx);
+}
+
+$("chart").addEventListener("pointermove", onChartPointer);
+$("chart").addEventListener("pointerleave", () => { hoverIdx = -1; drawChart(lastChartRows); });
+
+$("refresh").onclick = () => { loadAll(); nextRefreshIn = CFG.check_interval_secs; };
+$("hours").onchange = loadAll;
+$("targetFilter").onchange = loadAll;
+setInterval(() => {
+  nextRefreshIn -= 1;
+  if (nextRefreshIn <= 0) { loadAll(); nextRefreshIn = CFG.check_interval_secs || 10; }
+  $("countdown").textContent = `next refresh in ${nextRefreshIn}s`;
+}, 1000);
+
+(async () => { await loadConfig(); await loadAll(); setInterval(loadConfig, 60000); })();
+</script>
+</body>
+</html>

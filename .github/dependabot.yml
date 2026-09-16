@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    pull-request:
+      title-pattern: "chore deps: {{package}} {{version}} ({{mode}})"
+      labels:
+        - "dependencies"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"

@@ -1,0 +1,23 @@
+name: ci
+
+# Continuous integration: static checks + tests on every push to main and
+# every pull request. Deploying (binaries, images) lives in cd.yml and only
+# runs on `v*` tags.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
