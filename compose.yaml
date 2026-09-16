@@ -20,7 +20,7 @@ services:
     # The scratch image has no shell/curl, so the binary checks itself via
     # `netmon healthcheck` (GETs /api/health on $PORT, exit 0 = healthy).
     healthcheck:
-      test: ["CMD", "/network_packet_drop", "healthcheck"]
+      test: ["CMD", "/network_monitor", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

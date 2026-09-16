@@ -23,3 +23,10 @@ tower = { version = "0.5.3", features = ["util"] }
 # so cargo shares the compiled artifact — near-zero extra build cost.
 [build-dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

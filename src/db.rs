@@ -1,11 +1,11 @@
 //! SQLite persistence behind the `Store` repository.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use crate::domain::{loss_pct, HistoryLimit, ProbeOutcome, TargetName, UnixSecs};
 use crate::domain::{CompactError, DbPath};
+use crate::domain::{HistoryLimit, ProbeOutcome, TargetName, UnixSecs, loss_pct};
 use crate::error::StoreError;
 
 // ---------------------------------------------------------------------------
@@ -535,13 +535,15 @@ mod tests {
         assert!(s.init().is_err());
         assert!(s.insert(UnixSecs::new(1), &target("a"), &ok(1)).is_err());
         assert!(s.latest_per_target().is_err());
-        assert!(s
-            .history(None, None, HistoryLimit::new(5).unwrap())
-            .is_err());
+        assert!(
+            s.history(None, None, HistoryLimit::new(5).unwrap())
+                .is_err()
+        );
         assert!(s.stats(UnixSecs::new(0)).is_err());
-        assert!(s
-            .outages(UnixSecs::new(0), HistoryLimit::new(5).unwrap())
-            .is_err());
+        assert!(
+            s.outages(UnixSecs::new(0), HistoryLimit::new(5).unwrap())
+                .is_err()
+        );
         assert!(s.count().is_err());
         assert!(s.db_path().as_path().to_string_lossy().contains("x.db"));
     }
@@ -642,13 +644,15 @@ mod tests {
         assert!(s.init().is_err());
         assert!(s.insert(UnixSecs::new(1), &target("a"), &ok(1)).is_err());
         assert!(s.latest_per_target().is_err());
-        assert!(s
-            .history(None, None, HistoryLimit::new(5).unwrap())
-            .is_err());
+        assert!(
+            s.history(None, None, HistoryLimit::new(5).unwrap())
+                .is_err()
+        );
         assert!(s.stats(UnixSecs::new(0)).is_err());
-        assert!(s
-            .outages(UnixSecs::new(0), HistoryLimit::new(5).unwrap())
-            .is_err());
+        assert!(
+            s.outages(UnixSecs::new(0), HistoryLimit::new(5).unwrap())
+                .is_err()
+        );
         assert!(s.count().is_err());
     }
 

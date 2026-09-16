@@ -26,7 +26,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "network_packet_drop=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "network_monitor=info,tower_http=info".into()),
         )
         .init();
 

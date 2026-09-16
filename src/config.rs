@@ -154,10 +154,10 @@ impl ConfigBuilder {
         if let Some(v) = f.check_timeout_secs {
             self.timeout_secs = Some(v);
         }
-        if let Some(v) = f.targets {
-            if !v.is_empty() {
-                self.targets = Some(v);
-            }
+        if let Some(v) = f.targets
+            && !v.is_empty()
+        {
+            self.targets = Some(v);
         }
         Ok(())
     }
@@ -166,10 +166,10 @@ impl ConfigBuilder {
         if let Some(v) = env_u16("PORT") {
             self.port = Some(v);
         }
-        if let Ok(v) = std::env::var("DB_PATH") {
-            if !v.trim().is_empty() {
-                self.db_path = Some(v);
-            }
+        if let Ok(v) = std::env::var("DB_PATH")
+            && !v.trim().is_empty()
+        {
+            self.db_path = Some(v);
         }
         if let Some(v) = env_u64("CHECK_INTERVAL_SECS") {
             self.interval_secs = Some(v);
@@ -177,10 +177,10 @@ impl ConfigBuilder {
         if let Some(v) = env_u64("CHECK_TIMEOUT_SECS") {
             self.timeout_secs = Some(v);
         }
-        if let Ok(raw) = std::env::var("TARGETS") {
-            if !raw.trim().is_empty() {
-                self.targets = Some(parse_targets_env(&raw)?);
-            }
+        if let Ok(raw) = std::env::var("TARGETS")
+            && !raw.trim().is_empty()
+        {
+            self.targets = Some(parse_targets_env(&raw)?);
         }
         Ok(())
     }
@@ -288,10 +288,10 @@ pub fn parse_targets_env(raw: &str) -> Result<Vec<MonitorTarget>, ConfigError> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, MutexGuard};
 
-    /// Serializes tests that mutate process env (cargo runs tests in parallel
-    /// in one process, so env mutation would otherwise race).
+    /// Serializes tests that touch process env (cargo runs tests in parallel
+    /// in one process, so env access would otherwise race).
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     const ENV_KEYS: &[&str] = &[
@@ -303,31 +303,48 @@ mod tests {
         "TARGETS",
     ];
 
+    /// Owns `ENV_LOCK` for its whole lifetime: while an `EnvGuard` exists, no
+    /// other test thread can read or write process env.
     struct EnvGuard {
+        _token: MutexGuard<'static, ()>,
         saved: Vec<(String, Option<String>)>,
     }
 
     impl EnvGuard {
         fn take() -> Self {
+            let token = ENV_LOCK.lock().unwrap();
             let saved = ENV_KEYS
                 .iter()
                 .map(|k| (k.to_string(), std::env::var(k).ok()))
                 .collect();
+            // SAFETY: the lock was just acquired and is stored in `Self`,
+            // so it stays held for the guard's entire lifetime.
             for k in ENV_KEYS {
-                std::env::remove_var(k);
+                unsafe { std::env::remove_var(k) };
             }
-            Self { saved }
+            Self {
+                _token: token,
+                saved,
+            }
+        }
+
+        fn set(&self, key: &str, value: impl AsRef<str>) {
+            let value = value.as_ref();
+            // SAFETY: `self._token` proves the lock is held.
+            unsafe { std::env::set_var(key, value) };
         }
     }
 
     impl Drop for EnvGuard {
         fn drop(&mut self) {
+            // SAFETY: `Drop::drop` runs before fields are dropped, so
+            // `self._token` (and the lock it holds) is still alive here.
             for k in ENV_KEYS {
-                std::env::remove_var(k);
+                unsafe { std::env::remove_var(k) };
             }
             for (k, v) in &self.saved {
                 if let Some(v) = v {
-                    std::env::set_var(k, v);
+                    unsafe { std::env::set_var(k, v) };
                 }
             }
         }
@@ -473,15 +490,11 @@ mod tests {
 
     #[test]
     fn load_defaults_when_no_file_and_no_env() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var(
+        _env.set(
             "CONFIG_PATH",
-            dir.path()
-                .join("does-not-exist.json")
-                .to_string_lossy()
-                .to_string(),
+            dir.path().join("does-not-exist.json").to_string_lossy(),
         );
         let cfg = Config::load().unwrap();
         assert_eq!(cfg.port_u16(), 3000);
@@ -492,7 +505,6 @@ mod tests {
 
     #[test]
     fn load_reads_valid_file() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
         let dir = tempfile::tempdir().unwrap();
         let path = write_file(
@@ -506,7 +518,7 @@ mod tests {
                 "targets": [{"name": "t", "host": "9.9.9.9", "port": 53}]
             }"#,
         );
-        std::env::set_var("CONFIG_PATH", path);
+        _env.set("CONFIG_PATH", path);
         let cfg = Config::load().unwrap();
         assert_eq!(cfg.port_u16(), 8080);
         assert_eq!(cfg.interval_secs(), 30);
@@ -515,18 +527,17 @@ mod tests {
 
     #[test]
     fn load_rejects_invalid_json_and_directories() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
         let dir = tempfile::tempdir().unwrap();
         // Invalid JSON.
         let path = write_file(&dir, "bad.json", "{ not json");
-        std::env::set_var("CONFIG_PATH", &path);
+        _env.set("CONFIG_PATH", &path);
         assert!(matches!(
             Config::load().unwrap_err(),
             ConfigError::InvalidFile { .. }
         ));
         // A directory is present but unreadable as a file.
-        std::env::set_var("CONFIG_PATH", dir.path().to_string_lossy().to_string());
+        _env.set("CONFIG_PATH", dir.path().to_string_lossy());
         assert!(matches!(
             Config::load().unwrap_err(),
             ConfigError::InvalidFile { .. }
@@ -535,7 +546,6 @@ mod tests {
 
     #[test]
     fn load_rejects_invalid_target_in_file() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
         let dir = tempfile::tempdir().unwrap();
         // Port 0 fails domain validation during deserialization.
@@ -544,7 +554,7 @@ mod tests {
             "config.json",
             r#"{"targets": [{"name": "t", "host": "9.9.9.9", "port": 0}]}"#,
         );
-        std::env::set_var("CONFIG_PATH", path);
+        _env.set("CONFIG_PATH", path);
         assert!(matches!(
             Config::load().unwrap_err(),
             ConfigError::InvalidFile { .. }
@@ -553,13 +563,12 @@ mod tests {
 
     #[test]
     fn apply_env_overrides_all_fields() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
-        std::env::set_var("PORT", "8081");
-        std::env::set_var("DB_PATH", "env.db");
-        std::env::set_var("CHECK_INTERVAL_SECS", "20");
-        std::env::set_var("CHECK_TIMEOUT_SECS", "4");
-        std::env::set_var("TARGETS", "Mine=9.9.9.9:53");
+        _env.set("PORT", "8081");
+        _env.set("DB_PATH", "env.db");
+        _env.set("CHECK_INTERVAL_SECS", "20");
+        _env.set("CHECK_TIMEOUT_SECS", "4");
+        _env.set("TARGETS", "Mine=9.9.9.9:53");
         let mut b = ConfigBuilder::from_defaults();
         b.apply_env().unwrap();
         let cfg = b.build().unwrap();
@@ -572,12 +581,11 @@ mod tests {
 
     #[test]
     fn apply_env_ignores_blank_and_garbage() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
-        std::env::set_var("PORT", "not-a-number");
-        std::env::set_var("DB_PATH", "   ");
-        std::env::set_var("CHECK_INTERVAL_SECS", "zzz");
-        std::env::set_var("TARGETS", "   ");
+        _env.set("PORT", "not-a-number");
+        _env.set("DB_PATH", "   ");
+        _env.set("CHECK_INTERVAL_SECS", "zzz");
+        _env.set("TARGETS", "   ");
         let mut b = ConfigBuilder::from_defaults();
         b.apply_env().unwrap();
         let cfg = b.build().unwrap();
@@ -588,9 +596,8 @@ mod tests {
 
     #[test]
     fn apply_env_propagates_invalid_targets() {
-        let _lock = ENV_LOCK.lock().unwrap();
         let _env = EnvGuard::take();
-        std::env::set_var("TARGETS", "definitely-not-a-target");
+        _env.set("TARGETS", "definitely-not-a-target");
         let mut b = ConfigBuilder::from_defaults();
         assert!(matches!(
             b.apply_env().unwrap_err(),
@@ -612,13 +619,20 @@ mod tests {
 
     #[test]
     fn env_guard_restores_preexisting_values() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::set_var("PORT", "9999");
+        // Seed a value with no guard alive yet: hold the raw lock across the
+        // write so the same no-concurrent-access contract holds.
+        // SAFETY: `token` is alive for the call (see `EnvGuard` docs).
+        let token = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("PORT", "9999") };
+        drop(token);
         {
             let _guard = EnvGuard::take();
             assert!(std::env::var("PORT").is_err());
         }
         assert_eq!(std::env::var("PORT").as_deref(), Ok("9999"));
-        std::env::remove_var("PORT");
+        let token = ENV_LOCK.lock().unwrap();
+        // SAFETY: same as above.
+        unsafe { std::env::remove_var("PORT") };
+        drop(token);
     }
 }

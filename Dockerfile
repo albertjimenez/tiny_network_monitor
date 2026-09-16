@@ -31,7 +31,7 @@ FROM scratch AS runtime
 # (see compose.yaml) or a bind-mounted *directory*.
 WORKDIR /data
 
-COPY --from=builder /app/target/release/network_packet_drop /network_packet_drop
+COPY --from=builder /app/target/release/network_monitor /network_monitor
 COPY --from=builder /app/config.json /config.json
 
 EXPOSE 3000
@@ -42,9 +42,9 @@ ENV PORT=3000 \
     CHECK_INTERVAL_SECS=10 \
     CHECK_TIMEOUT_SECS=5
 
-ENTRYPOINT ["/network_packet_drop"]
+ENTRYPOINT ["/network_monitor"]
 
 # Self-check: the binary GETs /api/health on $PORT and exits 0/1.
 # (Exec form — no shell exists in scratch.)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["/network_packet_drop", "healthcheck"]
+  CMD ["/network_monitor", "healthcheck"]

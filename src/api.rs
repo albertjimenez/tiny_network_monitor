@@ -3,11 +3,11 @@
 //! ranges are rejected with 422 before any handler logic runs.
 
 use axum::{
+    Router,
     extract::{Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json, Response},
     routing::get,
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

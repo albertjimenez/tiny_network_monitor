@@ -124,7 +124,7 @@ build.rs      compile-time SQL gate: applies the schema to :memory: and
 
 Multi-stage build on `rust:1.98-alpine` (musl target natively → fully static
 binary), final stage is `scratch`: no shell, no libc, no package manager —
-just `/network_packet_drop` + `/config.json`. SQLite is compiled in via
+just `/network_monitor` + `/config.json`. SQLite is compiled in via
 rusqlite's `bundled` feature, and the dashboard HTML is embedded, so the
 runtime image needs nothing else.
 

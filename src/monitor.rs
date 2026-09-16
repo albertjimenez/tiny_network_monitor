@@ -193,16 +193,20 @@ mod tests {
         assert_eq!(store.count().unwrap(), 2);
         let latest = store.latest_per_target().unwrap();
         assert_eq!(latest.len(), 2);
-        assert!(latest
-            .iter()
-            .find(|c| c.target.as_str() == "open")
-            .unwrap()
-            .success());
-        assert!(!latest
-            .iter()
-            .find(|c| c.target.as_str() == "closed")
-            .unwrap()
-            .success());
+        assert!(
+            latest
+                .iter()
+                .find(|c| c.target.as_str() == "open")
+                .unwrap()
+                .success()
+        );
+        assert!(
+            !latest
+                .iter()
+                .find(|c| c.target.as_str() == "closed")
+                .unwrap()
+                .success()
+        );
     }
 
     /// Unroutable TEST-NET-1 address: the connect hangs until the probe

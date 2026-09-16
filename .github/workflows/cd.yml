@@ -14,8 +14,7 @@ name: cd
 #     has no extra DLL dependencies
 #   aarch64-apple-darwin        Apple Silicon, native runner
 # Docker stays amd64+arm64: 64-bit covers every supported Pi OS install,
-# while arm/v6 would need QEMU-emulated Rust compilation (very slow) for a
-# shrinking set of 32-bit devices — those are served by the armv6 binary.
+# while arm/v6 are served by the armv6 binary.
 
 on:
   push:
@@ -96,13 +95,13 @@ jobs:
           fi
       - name: List Windows DLL imports (must be system DLLs only)
         if: matrix.target == 'x86_64-pc-windows-gnu'
-        run: x86_64-w64-mingw32-objdump -p "target/${{ matrix.target }}/release/network_packet_drop${{ matrix.exe }}" | grep "DLL Name"
+        run: x86_64-w64-mingw32-objdump -p "target/${{ matrix.target }}/release/network_monitor${{ matrix.exe }}" | grep "DLL Name"
       - name: Package
         shell: bash
         run: |
           STAGE=dist/netmon
           mkdir -p "$STAGE"
-          cp "target/${{ matrix.target }}/release/network_packet_drop${{ matrix.exe }}" "$STAGE/"
+          cp "target/${{ matrix.target }}/release/network_monitor${{ matrix.exe }}" "$STAGE/"
           cp config.json README.md "$STAGE/"
           if [ "${{ matrix.archive }}" = "zip" ]; then
             (cd dist && zip -r "../netmon-${{ matrix.target }}.zip" netmon)
