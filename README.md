@@ -9,6 +9,17 @@ as Google/Cloudflare — no root, no ICMP privileges needed. The dashboard page
 has zero external dependencies (no CDN), so it still renders while your
 internet is down.
 
+## Screenshots
+
+All UI is a single dependency-free HTML page embedded in the binary, so it
+renders identically in every browser (and offline).
+
+| | |
+|:---:|:---:|
+| [![Dashboard](https://i.ibb.co/PsmcHcXr/Captura-de-pantalla-2026-09-16-a-las-23-24-18.png)](https://i.ibb.co/PsmcHcXr/Captura-de-pantalla-2026-09-16-a-las-23-24-18.png) | [![Outages](https://i.ibb.co/vCskxgsD/Captura-de-pantalla-2026-09-16-a-las-23-26-14.png)](https://i.ibb.co/vCskxgsD/Captura-de-pantalla-2026-09-16-a-las-23-26-14.png) |
+| *Live dashboard — status badge, per-target cards, latency chart* | *Outage table & recent-failures feed* |
+
+
 ## Quickstart
 
 ### Local
@@ -25,6 +36,65 @@ docker compose up -d --build
 # open http://localhost:3000
 docker compose logs -f
 ```
+
+## Docker
+> **Already running `docker compose`?** Skip the pull — the compose file in
+> this repo builds locally by default, but swapping the `build:` stanza for
+> `image: beruto/netmon:latest` gets you the prebuilt image instead.
+
+
+Prebuilt, multi-arch images are published to **Docker Hub** on every `v*`
+tag — no build step, no Rust toolchain, no source clone:
+
+```
+https://hub.docker.com/r/beruto/netmon
+```
+
+The manifest list ships **both `linux/amd64` and `linux/arm64`** variants in
+a single tag, so a plain pull transparently selects the architecture that
+matches your host — no `--platform` flag, no separate tag to remember:
+
+```bash
+docker pull beruto/netmon
+# 1 s later:
+docker run -d --name netmon \
+  -p 3000:3000 \
+  -v netmon-data:/data \
+  --restart unless-stopped \
+  beruto/netmon
+# → http://localhost:3000
+```
+
+That's it. `docker pull` (and `docker run`) query the Hub manifest list and
+download only the blob for your CPU — an M-series Mac and an x86 server both
+run the same one-liner with no extra arguments.
+
+| Tag | Contents |
+| --- | -------- |
+| `latest` | newest release |
+| `v0.x.y` | pinned release |
+
+The image is `scratch`-based (fully static musl binary, SQLite compiled in,
+dashboard embedded), so no shell, no
+libc, and no package manager. The only mount you need is the data volume
+(`/data`) for the SQLite file; everything else is baked in.
+
+
+
+### Verify the pull landed on the right arch
+
+```bash
+docker image inspect beruto/netmon --format '{{.Architecture}}'
+# amd64 on an x86 host, arm64 on a Raspberry Pi / Graviton / M-series
+```
+
+### Healthcheck & restarts
+
+The image bakes in a `HEALTHCHECK` that runs the binary's own
+`netmon healthcheck` subcommand (a plain TCP GET to `/api/health`, zero
+extra deps). Combined with `--restart unless-stopped` (or
+`restart: unless-stopped` in compose), the container self-heals if the
+web layer wedges — no external liveness probe needed.
 
 The SQLite database is **auto-created on first boot** at `DB_PATH`
 (`/data/netmon.db` in the container, on the `netmon-data` volume). You never
@@ -118,27 +188,6 @@ db/
 build.rs      compile-time SQL gate: applies the schema to :memory: and
               EXPLAINs every query — invalid SQL fails the build, no
               DATABASE_URL or live database needed
-```
-
-### Docker image
-
-Multi-stage build on `rust:1.98-alpine` (musl target natively → fully static
-binary), final stage is `scratch`: no shell, no libc, no package manager —
-just `/network_monitor` + `/config.json`. SQLite is compiled in via
-rusqlite's `bundled` feature, and the dashboard HTML is embedded, so the
-runtime image needs nothing else.
-
-```bash
-docker build -t netmon .
-docker run -p 3000:3000 -v netmon-data:/data --restart unless-stopped netmon
-```
-
-Prebuilt multi-arch images (`linux/amd64` + `linux/arm64`) are published to
-Docker Hub on every `v*` tag:
-
-```bash
-docker run -p 3000:3000 -v netmon-data:/data --restart unless-stopped \
-  beruto/netmon:latest
 ```
 
 ### Healthcheck
